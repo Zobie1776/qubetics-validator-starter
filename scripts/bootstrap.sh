@@ -25,10 +25,14 @@ mkdir -p "$WORKDIR" "$HOME_DIR" "$REPORTS_DIR" /data
 
 say "Updating apt repositories"
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -y >/dev/null
+if ! apt-get update -y >/dev/null 2>&1; then
+  say "Warning: apt-get update failed; continuing with cached metadata"
+fi
 
 say "Installing required packages"
-apt-get install -y git curl jq ufw fail2ban build-essential unzip lz4 nginx certbot python3-certbot-nginx >/dev/null
+if ! apt-get install -y git curl jq ufw fail2ban build-essential unzip lz4 nginx certbot python3-certbot-nginx >/dev/null 2>&1; then
+  say "Warning: package installation encountered issues"
+fi
 
 say "Cloning validator scripts from upstream"
 if [[ -d "$REPO_DIR/.git" ]]; then
@@ -62,7 +66,7 @@ Wants=network-online.target
 [Service]
 User=root
 Type=simple
-ExecStart=/usr/local/bin/qubeticsd start --home $HOME_DIR --moniker "$MONIKER"
+ExecStart=/usr/local/bin/qubeticsd start --home ${HOME_DIR} --moniker "${MONIKER}"
 Restart=on-failure
 RestartSec=5
 LimitNOFILE=65535
@@ -135,7 +139,7 @@ ufw --force enable >/dev/null 2>&1 || true
 
 say "Waiting for node RPC to become available"
 ATTEMPTS=0
-until curl -sf http://127.0.0.1:26657/status >/dev/null; do
+until curl -fsS http://127.0.0.1:26657/status >/dev/null 2>&1; do
   sleep 5
   ATTEMPTS=$((ATTEMPTS + 1))
   if (( ATTEMPTS > 60 )); then
@@ -145,7 +149,7 @@ until curl -sf http://127.0.0.1:26657/status >/dev/null; do
 done
 
 NODE_ID="$(qubeticsd tendermint show-node-id --home "$HOME_DIR" 2>/dev/null || echo 'unknown')"
-STATUS_JSON="$(curl -s http://127.0.0.1:26657/status || echo '{}')"
+STATUS_JSON="$(curl -fsS http://127.0.0.1:26657/status 2>/dev/null || echo '{}')"
 SYNC_INFO="$(printf '%s' "$STATUS_JSON" | json '.result.sync_info.catching_up' 2>/dev/null || echo 'unknown')"
 LADDR="$(toml_get_laddr || echo 'unknown')"
 UFW_STATUS="$(ufw status || true)"

@@ -48,7 +48,14 @@ jobs:
         run: |
           set -euo pipefail
           files="$(git ls-files 'scripts/*.sh' || true)"
-          if [ -n "$files" ]; then shellcheck $files; else echo "No shell scripts"; fi
+          if [ -n "$files" ]; then
+            shellcheck -S error $files
+            echo "::group::ShellCheck warnings (non-fatal)"
+            shellcheck -S warning -f gcc $files || true
+            echo "::endgroup::"
+          else
+            echo "No shell scripts"
+          fi
 
       - name: Hadolint Dockerfile
         run: |

@@ -58,9 +58,14 @@ if [[ -n "$VERSION" ]]; then
       say "Warning: unable to clone qubetics repository at $VERSION"
     }
     if [[ -d "$TMP_DIR/qubetics" ]]; then
-      pushd "$TMP_DIR/qubetics" >/dev/null
-      make install || say "Warning: make install failed"
-      popd >/dev/null
+      local prev_dir
+      prev_dir="$(pwd)"
+      if cd "$TMP_DIR/qubetics"; then
+        make install || say "Warning: make install failed"
+        cd "$prev_dir" || { printf 'cd failed: %s\n' "$prev_dir" >&2; exit 1; }
+      else
+        say "Warning: unable to enter $TMP_DIR/qubetics"
+      fi
     fi
     cleanup_tmp
     trap - EXIT
@@ -75,7 +80,7 @@ say "Starting $SERVICE_NAME"
 systemctl start "$SERVICE_NAME" || true
 sleep 5
 
-STATUS_JSON="$(curl -s http://127.0.0.1:26657/status || echo '{}')"
+STATUS_JSON="$(curl -fsS http://127.0.0.1:26657/status 2>/dev/null || echo '{}')"
 HEIGHT="$(printf '%s' "$STATUS_JSON" | json '.result.sync_info.latest_block_height' 2>/dev/null || echo 'unknown')"
 NEW_VERSION="$(qubeticsd version 2>/dev/null || echo 'unknown')"
 

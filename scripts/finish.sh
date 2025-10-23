@@ -29,7 +29,7 @@ if ! qubeticsd keys show "$KEY_NAME" "${KEYRING_FLAGS[@]}" >/dev/null 2>&1; then
 fi
 
 ADDRESS=$(qubeticsd keys show "$KEY_NAME" "${KEYRING_FLAGS[@]}" --address)
-STATUS_JSON="$(curl -s "$RPC/status" || qubeticsd status --node "$RPC" 2>/dev/null || echo '{}')"
+STATUS_JSON="$(curl -fsS "$RPC/status" 2>/dev/null || qubeticsd status --node "$RPC" 2>/dev/null || echo '{}')"
 CHAIN_ID="$(printf '%s' "$STATUS_JSON" | json '.result.node_info.network' 2>/dev/null || echo '')"
 CATCHING_UP="$(printf '%s' "$STATUS_JSON" | json '.result.sync_info.catching_up' 2>/dev/null || echo '')"
 
@@ -127,9 +127,9 @@ qubeticsd tx staking create-validator \
 
 say "Transaction broadcast. Monitoring sync status"
 
-for attempt in {1..90}; do
+for attempt in $(seq 1 90); do
   sleep 10
-  STATUS_JSON="$(curl -s "$RPC/status" || echo '{}')"
+  STATUS_JSON="$(curl -fsS "$RPC/status" 2>/dev/null || echo '{}')"
   CATCHING_UP="$(printf '%s' "$STATUS_JSON" | json '.result.sync_info.catching_up' 2>/dev/null || echo '')"
   say "Status check #$attempt catching_up=$CATCHING_UP"
   if [[ "$CATCHING_UP" == "false" ]]; then

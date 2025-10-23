@@ -12,7 +12,7 @@ mkdir -p "$REPORTS_DIR"
 require_cmd curl
 require_cmd jq
 
-STATUS_JSON="$(curl -s "$RPC/status" || echo '{}')"
+STATUS_JSON="$(curl -fsS "$RPC/status" 2>/dev/null || echo '{}')"
 HEIGHT="$(printf '%s' "$STATUS_JSON" | json '.result.sync_info.latest_block_height' 2>/dev/null || echo 'unknown')"
 CATCHING="$(printf '%s' "$STATUS_JSON" | json '.result.sync_info.catching_up' 2>/dev/null || echo 'unknown')"
 PEERS="$(printf '%s' "$STATUS_JSON" | jq -r '.result.peers | length' 2>/dev/null || echo 'unknown')"

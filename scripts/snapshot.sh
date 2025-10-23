@@ -53,7 +53,9 @@ trap 'rm -rf "$TEMP_DIR"' EXIT
 SNAP_FILE="$TEMP_DIR/snapshot.lz4"
 
 say "Downloading snapshot from $SNAP_URL"
-curl -fL "$SNAP_URL" -o "$SNAP_FILE"
+if ! curl -fsSL "$SNAP_URL" -o "$SNAP_FILE"; then
+  die "Failed to download snapshot from $SNAP_URL"
+fi
 
 say "Clearing old data"
 rm -rf "$HOME_DIR/data" "$HOME_DIR/wasm" "$HOME_DIR/snapshots"
@@ -70,9 +72,9 @@ LOG_OUTPUT="$(journalctl -u "$SERVICE_NAME" -n 50 --no-pager 2>/dev/null || true
 
 CATCHING="true"
 HEIGHT="unknown"
-for attempt in {1..60}; do
+for attempt in $(seq 1 60); do
   sleep 10
-  STATUS_JSON="$(curl -s http://127.0.0.1:26657/status || echo '{}')"
+  STATUS_JSON="$(curl -fsS http://127.0.0.1:26657/status 2>/dev/null || echo '{}')"
   CATCHING="$(printf '%s' "$STATUS_JSON" | json '.result.sync_info.catching_up' 2>/dev/null || echo 'true')"
   HEIGHT="$(printf '%s' "$STATUS_JSON" | json '.result.sync_info.latest_block_height' 2>/dev/null || echo 'unknown')"
   say "Status check #$attempt catching_up=$CATCHING height=$HEIGHT"
