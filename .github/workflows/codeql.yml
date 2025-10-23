@@ -1,33 +1,62 @@
 name: CodeQL
-
 on:
   push:
-    branches: [main]
+    branches: [ main ]
   pull_request:
+    branches: [ main ]
   schedule:
-    - cron: '0 6 * * 1'
+    - cron: '23 3 * * 2'
 
 jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      langs: ${{ steps.set.outputs.langs }}
+      has_supported: ${{ steps.set.outputs.has_supported }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: set
+        shell: bash
+        run: |
+          set -euo pipefail
+          langs=""
+          add() { langs="${langs}${langs:+, }$1"; }
+          if [ -n "$(git ls-files '*.js' '*.jsx' '*.ts' '*.tsx' 2>/dev/null)" ]; then add javascript; fi
+          if [ -n "$(git ls-files '*.py' 2>/dev/null)" ]; then add python; fi
+          if [ -n "$(git ls-files '*.go' 2>/dev/null)" ]; then add go; fi
+          if [ -n "$(git ls-files '*.java' '*.kt' '*.kts' 2>/dev/null)" ]; then add java-kotlin; fi
+          if [ -n "$(git ls-files '*.rb' 2>/dev/null)" ]; then add ruby; fi
+          if [ -n "$(git ls-files '*.c' '*.cc' '*.cpp' '*.cxx' 2>/dev/null)" ]; then add cpp; fi
+          if [ -n "$(git ls-files '*.cs' 2>/dev/null)" ]; then add csharp; fi
+          if [ -n "$(git ls-files '*.rs' 2>/dev/null)" ]; then add rust; fi
+          if [ -n "$(git ls-files '*.swift' 2>/dev/null)" ]; then add swift; fi
+          if [ -n "$(git ls-files '.github/workflows/*.yml' '.github/workflows/*.yaml' 2>/dev/null)" ]; then add actions; fi
+          has_supported=false
+          if [ -n "$langs" ]; then has_supported=true; fi
+          echo "langs=$langs" >> "$GITHUB_OUTPUT"
+          echo "has_supported=$has_supported" >> "$GITHUB_OUTPUT"
+
   analyze:
-    name: Analyze
+    needs: detect
+    if: needs.detect.outputs.has_supported == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       security-events: write
       actions: read
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
-          languages: 'javascript'
-          packs: |
-            codeql/docker-queries@latest
-            codeql/shell-queries@latest
+          languages: ${{ needs.detect.outputs.langs }}
+          queries: security-and-quality
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v4
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
-          category: '/language:javascript'
+          category: '/language: ${{ needs.detect.outputs.langs }}'
