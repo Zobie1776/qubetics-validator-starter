@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: setup finish status logs rpc-local rpc-expose rpc-lockdown docker-up docker-down docker-logs
+.PHONY: setup finish status logs rpc-local rpc-expose rpc-lockdown rpc-domain upgrade snapshot metrics docker-up docker-down docker-logs
 
 setup:
 	bash scripts/bootstrap.sh $(MONIKER)
@@ -22,6 +22,18 @@ rpc-expose:
 
 rpc-lockdown:
 	bash scripts/rpc.sh lockdown
+
+rpc-domain:
+	DOMAIN=$(DOMAIN) ALLOW_IPS=$(ALLOW_IPS) EMAIL=$(EMAIL) bash scripts/rpc.sh domain
+
+upgrade:
+	VERSION=$(VERSION) bash scripts/upgrade.sh
+
+snapshot:
+	SNAP_URL=$(SNAP_URL) bash scripts/snapshot.sh
+
+metrics:
+	bash scripts/metrics.sh
 
 docker-up:
 	docker compose -f docker/docker-compose.yml up -d

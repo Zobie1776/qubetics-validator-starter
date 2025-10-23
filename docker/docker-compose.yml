@@ -4,16 +4,24 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      args:
+        QUBETICS_SRC_REF: ${QUBETICS_SRC_REF:-main}
     container_name: q-sync-validator
     restart: unless-stopped
     volumes:
-      - /data:/data
+      - qubetics-data:/data
     ports:
       - "26656:26656"
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
     environment:
       - RPC=http://127.0.0.1:26657
     healthcheck:
-      test: ["CMD", "/usr/local/bin/q-sync-healthcheck"]
+      test: ["CMD", "/bin/bash", "/app/scripts/healthcheck.sh"]
       interval: 30s
       timeout: 10s
       retries: 5
+volumes:
+  qubetics-data:
