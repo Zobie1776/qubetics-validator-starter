@@ -14,7 +14,7 @@ jobs:
       langs: ${{ steps.set.outputs.langs }}
       has_supported: ${{ steps.set.outputs.has_supported }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - id: set
         shell: bash
         run: |
@@ -45,7 +45,7 @@ jobs:
       security-events: write
       actions: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
