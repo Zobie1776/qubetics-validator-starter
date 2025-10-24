@@ -1,0 +1,10 @@
+```mermaid
+graph LR
+  Client((Delegators)) -->|Stake| Validator
+  Validator -->|P2P| Sentry1[Sentry Node 1]
+  Validator -->|P2P| Sentry2[Sentry Node 2]
+  Sentry1 -->|RPC| Prometheus
+  Sentry2 -->|RPC| Prometheus
+  Prometheus --> Grafana
+  Validator -->|Backups| Snapshot[Snapshot Storage]
+```

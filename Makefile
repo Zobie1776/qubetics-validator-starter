@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: setup finish status logs rpc-local rpc-expose rpc-lockdown rpc-domain upgrade snapshot metrics docker-up docker-down docker-logs
+.PHONY: setup finish status logs rpc-local rpc-expose rpc-lockdown rpc-domain upgrade snapshot snapshot-restore backup monitor analyze-logs tune benchmark metrics docker-up docker-down docker-logs exporter
 
 setup:
 	bash scripts/bootstrap.sh $(MONIKER)
@@ -30,10 +30,31 @@ upgrade:
 	VERSION=$(VERSION) bash scripts/upgrade.sh
 
 snapshot:
-	SNAP_URL=$(SNAP_URL) bash scripts/snapshot.sh
+        SNAPSHOT_DIR=$(SNAPSHOT_DIR) bash scripts/snapshot.sh
+
+snapshot-restore:
+        SNAP_URL=$(SNAP_URL) bash scripts/restore.sh
+
+backup:
+        BACKUP_DIR=$(BACKUP_DIR) BACKUP_PASSPHRASE=$(BACKUP_PASSPHRASE) bash scripts/backup.sh
+
+monitor:
+        RPC=$(RPC) REFERENCE_RPC=$(REFERENCE_RPC) bash scripts/monitor.sh
+
+analyze-logs:
+        SERVICE_NAME=$(SERVICE_NAME) SINCE=$(SINCE) bash scripts/analyze_logs.sh
+
+tune:
+        sudo bash scripts/tune.sh
+
+benchmark:
+        BENCHMARK_DURATION=$(DURATION) bash scripts/benchmark.sh
 
 metrics:
-	bash scripts/metrics.sh
+        bash scripts/metrics.sh
+
+exporter:
+        python monitoring/exporter.py
 
 docker-up:
 	docker compose -f docker/docker-compose.yml up -d

@@ -5,12 +5,59 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./utils.sh
 source "$SCRIPT_DIR/utils.sh"
 
-KEY_NAME="${KEY_NAME:-validator}"
+usage() {
+  cat <<USAGE
+Usage: $(basename "$0") [options]
+
+Options:
+  --network <profile>    Network profile (mainnet/testnet)
+  --rpc <url>            Tendermint RPC endpoint (default http://127.0.0.1:${RPC_PORT})
+  --chain-id <id>        Override detected chain-id
+  --min-tics <amount>    Minimum self delegation in display units
+  --moniker <name>       Moniker override
+  --home <path>          Qubetics home directory
+  --non-interactive      Skip prompts and confirmations (requires env values)
+  --env-file <path>      Load variables from custom env file
+  --help                 Show this help
+USAGE
+}
+
 HOME_DIR="${HOME_DIR:-/data/.tmp-qubeticsd}"
-RPC="${RPC:-http://127.0.0.1:26657}"
+KEY_NAME="${KEY_NAME:-validator}"
+RPC="${RPC:-http://127.0.0.1:${RPC_PORT}}"
 MIN_TICS="${MIN_TICS:-25000}"
 MONIKER_DEFAULT="${MONIKER:-NovaOS-1}"
-REPORT_FILE="${REPORTS_DIR}/finish.md"
+NON_INTERACTIVE=false
+
+if ! parse_common_args "$@"; then
+  usage
+  exit 0
+fi
+
+set -- "${COMMON_ARGS[@]}"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --rpc)
+      RPC="$2"; shift 2 ;;
+    --chain-id)
+      CHAIN_ID="$2"; shift 2 ;;
+    --min-tics)
+      MIN_TICS="$2"; shift 2 ;;
+    --moniker)
+      MONIKER_DEFAULT="$2"; shift 2 ;;
+    --home)
+      HOME_DIR="$2"; shift 2 ;;
+    --non-interactive)
+      NON_INTERACTIVE=true; shift ;;
+    --help)
+      usage; exit 0 ;;
+    --*)
+      die "Unknown flag $1" ;;
+    *)
+      break ;;
+  esac
+done
 
 mkdir -p "$REPORTS_DIR" "$HOME_DIR"
 
@@ -18,10 +65,11 @@ require_cmd qubeticsd
 require_cmd jq
 require_cmd curl
 require_cmd python3
+require_env MIN_TICS
 
 say "Starting validator finish phase"
 
-KEYRING_FLAGS=(--keyring-backend file --home "$HOME_DIR")
+KEYRING_FLAGS=(--keyring-backend "${KEYRING_BACKEND:-file}" --home "$HOME_DIR")
 if ! qubeticsd keys show "$KEY_NAME" "${KEYRING_FLAGS[@]}" >/dev/null 2>&1; then
   say "Key '$KEY_NAME' not found in $HOME_DIR."
   say "Import it with: qubeticsd keys add $KEY_NAME --recover --keyring-backend file --home \"$HOME_DIR\""
@@ -30,8 +78,11 @@ fi
 
 ADDRESS=$(qubeticsd keys show "$KEY_NAME" "${KEYRING_FLAGS[@]}" --address)
 STATUS_JSON="$(curl -fsS "$RPC/status" 2>/dev/null || qubeticsd status --node "$RPC" 2>/dev/null || echo '{}')"
-CHAIN_ID="$(printf '%s' "$STATUS_JSON" | json '.result.node_info.network' 2>/dev/null || echo '')"
+CHAIN_ID_AUTO="$(printf '%s' "$STATUS_JSON" | json '.result.node_info.network' 2>/dev/null || echo '')"
 CATCHING_UP="$(printf '%s' "$STATUS_JSON" | json '.result.sync_info.catching_up' 2>/dev/null || echo '')"
+if [[ -z "${CHAIN_ID:-}" || "${CHAIN_ID}" == "null" ]]; then
+  CHAIN_ID="$CHAIN_ID_AUTO"
+fi
 
 if [[ -z "$CHAIN_ID" || "$CHAIN_ID" == "null" ]]; then
   die "Unable to determine chain-id from $RPC"
@@ -64,21 +115,29 @@ say "Detected chain: $CHAIN_ID"
 say "Bond denom: $DENOM (exp=$EXPONENT)"
 say "Wallet balance: ${BALANCE_BASE}${DENOM}"
 
-read -r -p "Moniker [$MONIKER_DEFAULT]: " INPUT_MONIKER
-MONIKER_VALUE="${INPUT_MONIKER:-$MONIKER_DEFAULT}"
-while [[ -z "$MONIKER_VALUE" ]]; do
-  read -r -p "Moniker cannot be empty. Moniker [$MONIKER_DEFAULT]: " INPUT_MONIKER
-  MONIKER_VALUE="${INPUT_MONIKER:-$MONIKER_DEFAULT}"
-done
-
-read -r -p "Commission rate (e.g. 0.10) [0.10]: " COMMISSION_RATE
+MONIKER_VALUE="$MONIKER_DEFAULT"
+SELF_TICS="$MIN_TICS"
 COMMISSION_RATE="${COMMISSION_RATE:-0.10}"
-read -r -p "Commission max rate [0.20]: " COMMISSION_MAX
 COMMISSION_MAX="${COMMISSION_MAX:-0.20}"
-read -r -p "Commission max change rate [0.01]: " COMMISSION_CHANGE
 COMMISSION_CHANGE="${COMMISSION_CHANGE:-0.01}"
-read -r -p "Self delegation amount (TICS) [$MIN_TICS]: " SELF_TICS
-SELF_TICS="${SELF_TICS:-$MIN_TICS}"
+
+if ! $NON_INTERACTIVE; then
+  read -r -p "Moniker [$MONIKER_VALUE]: " INPUT_MONIKER
+  MONIKER_VALUE="${INPUT_MONIKER:-$MONIKER_VALUE}"
+  while [[ -z "$MONIKER_VALUE" ]]; do
+    read -r -p "Moniker cannot be empty. Moniker [$MONIKER_DEFAULT]: " INPUT_MONIKER
+    MONIKER_VALUE="${INPUT_MONIKER:-$MONIKER_DEFAULT}"
+  done
+
+  read -r -p "Commission rate (e.g. 0.10) [$COMMISSION_RATE]: " INPUT_RATE
+  COMMISSION_RATE="${INPUT_RATE:-$COMMISSION_RATE}"
+  read -r -p "Commission max rate [$COMMISSION_MAX]: " INPUT_MAX
+  COMMISSION_MAX="${INPUT_MAX:-$COMMISSION_MAX}"
+  read -r -p "Commission max change rate [$COMMISSION_CHANGE]: " INPUT_CHANGE
+  COMMISSION_CHANGE="${INPUT_CHANGE:-$COMMISSION_CHANGE}"
+  read -r -p "Self delegation amount (TICS) [$SELF_TICS]: " INPUT_SELF
+  SELF_TICS="${INPUT_SELF:-$SELF_TICS}"
+fi
 
 SELF_BASE=$(python3 - <<PY
 from decimal import Decimal
@@ -105,8 +164,10 @@ say "Denom/base: ${DENOM} (exp=${EXPONENT})"
 say "You will self-delegate: ${SELF_TICS} TICS == ${SELF_BASE}${DENOM}"
 say "min_self_delegation: ${MIN_BASE}${DENOM}"
 
-if ! confirm "Confirm create-validator transaction? (y/N)"; then
-  exit 1
+if ! $NON_INTERACTIVE; then
+  if ! confirm "Confirm create-validator transaction? (y/N)"; then
+    exit 1
+  fi
 fi
 
 qubeticsd tx staking create-validator \
@@ -121,7 +182,7 @@ qubeticsd tx staking create-validator \
   --from "$KEY_NAME" \
   --node "$RPC" \
   --gas auto --gas-adjustment 1.2 \
-  --keyring-backend file \
+  --keyring-backend "${KEYRING_BACKEND:-file}" \
   --home "$HOME_DIR" \
   --yes
 
@@ -140,6 +201,7 @@ for attempt in $(seq 1 90); do
   fi
 done
 
+REPORT_FILE="${REPORTS_DIR}/finish.md"
 cat <<MARKDOWN > "$REPORT_FILE"
 # Finish Report
 

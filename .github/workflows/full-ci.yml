@@ -1,0 +1,78 @@
+name: Full CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck yamllint bats
+          pip install markdownlint-cli
+          curl -sSL https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64 -o hadolint
+          chmod +x hadolint
+      - name: ShellCheck
+        run: shellcheck scripts/*.sh
+      - name: YAML lint
+        run: yamllint .
+      - name: Markdown lint
+        run: markdownlint '**/*.md'
+      - name: Hadolint
+        run: ./hadolint docker/Dockerfile
+      - name: Bats smoke tests
+        run: bats tests
+
+  security:
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Trivy
+        uses: aquasecurity/setup-trivy@v0.11.0
+      - name: Filesystem scan
+        run: trivy fs --exit-code 1 --severity HIGH,CRITICAL .
+
+  build:
+    needs: security
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t ghcr.io/qubetics/q-sync-validator:${{ github.sha }} -f docker/Dockerfile .
+      - name: Save image archive
+        run: docker save ghcr.io/qubetics/q-sync-validator:${{ github.sha }} | gzip > validator.tar.gz
+      - name: Push artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: validator-image
+          path: validator.tar.gz
+
+  release:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract release version
+        id: version
+        run: |
+          VERSION=$(grep -m1 '^## v' CHANGELOG.md | awk '{print $2}')
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+      - name: Create tag
+        run: |
+          git tag "${{ steps.version.outputs.version }}" || true
+          git push origin "${{ steps.version.outputs.version }}" || true
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: Qubetics Validator Starter ${{ steps.version.outputs.version }}
+          body_path: CHANGELOG.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

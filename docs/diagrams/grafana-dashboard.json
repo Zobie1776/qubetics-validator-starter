@@ -1,0 +1,41 @@
+{
+  "title": "Qubetics Validator",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Block Height",
+      "targets": [
+        {
+          "expr": "qubetics_block_height"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Block Lag",
+      "targets": [
+        {
+          "expr": "qubetics_block_lag"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Peers",
+      "targets": [
+        {
+          "expr": "qubetics_peer_count"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Catching Up",
+      "targets": [
+        {
+          "expr": "qubetics_catching_up"
+        }
+      ]
+    }
+  ]
+}

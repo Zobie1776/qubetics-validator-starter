@@ -1,0 +1,13 @@
+```mermaid
+stateDiagram-v2
+  [*] --> Provision
+  Provision --> Bootstrap: make setup
+  Bootstrap --> KeyImport: offline key restore
+  KeyImport --> Syncing
+  Syncing --> Finish: make finish
+  Finish --> Monitoring: make monitor
+  Monitoring --> Upgrading: make upgrade
+  Upgrading --> Monitoring
+  Monitoring --> Backup: make snapshot / make backup
+  Backup --> Monitoring
+```

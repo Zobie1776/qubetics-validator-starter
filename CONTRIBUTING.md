@@ -5,40 +5,41 @@ Thank you for your interest in improving the Qubetics Validator Starter.
 ## Getting started
 
 1. Fork the repository and create a feature branch from `main`.
-2. Install required tooling (`shellcheck`, `hadolint`, `jq`, `curl`).
-3. Copy `.env.example` to `.env` and adjust values for local testing if needed.
+2. Install tooling: `pre-commit`, `bats`, `shellcheck`, `yamllint`, `hadolint`.
+3. Copy `config.sample.env` to `.env` and adjust values for local testing.
+4. Run `pre-commit install` to enable automatic linting before commits.
 
 ## Development workflow
 
-- Follow the provided Make targets. Useful commands:
+- Prefer the provided Make targets:
   - `make setup` – bootstrap and harden a node (requires root privileges).
-  - `make metrics` – quick sanity check that the node is reachable.
+  - `make finish` – perform validator creation checks.
+  - `make monitor`, `make snapshot`, `make backup` – operational smoke tests.
   - `make docker-up` / `make docker-down` – containerised testing.
-- All shell scripts must begin with `#!/usr/bin/env bash`, `set -Eeuo pipefail`, and source `scripts/utils.sh` for shared helpers.
-- Scripts should remain idempotent; re-running them must not duplicate config or break state.
-- Logs and human-readable reports belong in `.reports/` (see existing scripts for examples).
-
-## Coding style
-
-- Run `shellcheck scripts/*.sh` and `hadolint docker/Dockerfile` before submitting a pull request.
-- Prefer POSIX-compliant bash; avoid Bashisms that shellcheck flags unless justified.
-- Never store or print sensitive material (mnemonics, private keys, passwords).
-- When editing configs, use anchored `sed`/`awk` updates or rewrite entire files to keep re-runs safe.
+- All shell scripts must begin with `#!/usr/bin/env bash`, call `set -Eeuo pipefail`, and source `scripts/utils.sh`.
+- Keep scripts idempotent and log to `.reports/`.
+- Update documentation alongside code changes (README, docs/ guides, changelog entry).
 
 ## Commit messages
 
-We follow [Conventional Commits](https://www.conventionalcommits.org/). Example scopes:
+We follow [Conventional Commits](https://www.conventionalcommits.org/). Examples:
 
-- `feat(rpc): add domain connect helper`
-- `fix(bootstrap): guard against missing config`
-- `docs(readme): expand metrics section`
+- `feat(monitor): add slack webhook support`
+- `fix(bootstrap): guard systemd override path`
+- `docs(readme): add architecture diagram`
+
+## Testing
+
+- Run `pre-commit run --all-files` locally before opening a PR.
+- Execute `bats tests` to ensure helper scripts respond to `--help`/usage.
+- For behavioural changes touching RPC or monitoring, provide manual verification output in the PR description.
 
 ## Pull requests
 
-- Link related issues in the PR description.
-- Include a summary of manual testing (commands, logs).
-- Ensure CI passes (shellcheck, hadolint, CodeQL, workflows).
-- Be responsive to review feedback—small, focused commits are easier to review.
+- Link related issues and describe test coverage.
+- Ensure CI (lint, security scan, build) is green.
+- Keep diffs focused; large changes may be requested to split.
+- Update `CONTRIBUTORS.md` if you'd like recognition.
 
 ## Security disclosures
 

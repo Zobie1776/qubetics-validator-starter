@@ -5,9 +5,41 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./utils.sh
 source "$SCRIPT_DIR/utils.sh"
 
-RPC="${RPC:-http://127.0.0.1:26657}"
+usage() {
+  cat <<USAGE
+Usage: $(basename "$0") [options]
+
+Options:
+  --rpc <url>            Override RPC endpoint (default http://127.0.0.1:${RPC_PORT})
+  --network <profile>    Network profile context
+  --env-file <path>      Load variables from a file
+  --help                 Show this message
+USAGE
+}
+
+RPC="${RPC:-http://127.0.0.1:${RPC_PORT}}"
 REPORT_FILE="${REPORTS_DIR}/metrics.md"
 mkdir -p "$REPORTS_DIR"
+
+if ! parse_common_args "$@"; then
+  usage
+  exit 0
+fi
+
+set -- "${COMMON_ARGS[@]}"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --rpc)
+      RPC="$2"; shift 2 ;;
+    --help)
+      usage; exit 0 ;;
+    --*)
+      die "Unknown flag $1" ;;
+    *)
+      break ;;
+  esac
+done
 
 require_cmd curl
 require_cmd jq
