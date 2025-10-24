@@ -1,0 +1,66 @@
+version: "3.9"
+services:
+  validator:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        QUBETICS_SRC_REF: ${QUBETICS_SRC_REF:-main}
+    container_name: q-sync-validator
+    restart: unless-stopped
+    user: "${UID:-1000}:${GID:-1000}"
+    environment:
+      RPC: http://validator:26657
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - validator-data:/data
+    expose:
+      - "26656"
+    depends_on:
+      - sentry
+    networks:
+      - private
+    healthcheck:
+      test: ["CMD", "/bin/bash", "/app/scripts/healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  sentry:
+    image: ${SENTRY_IMAGE:-ghcr.io/qubetics/q-sync-validator:latest}
+    container_name: q-sync-sentry
+    restart: unless-stopped
+    user: "${UID:-1000}:${GID:-1000}"
+    environment:
+      RPC: http://0.0.0.0:26657
+    volumes:
+      - sentry-data:/data
+    ports:
+      - "${PUBLIC_P2P_PORT:-26656}:26656"
+    networks:
+      - private
+      - public
+
+  metrics:
+    image: python:3.12-slim
+    container_name: q-sync-metrics
+    restart: unless-stopped
+    user: "${UID:-1000}:${GID:-1000}"
+    volumes:
+      - ../monitoring:/opt/exporter
+    working_dir: /opt/exporter
+    command: ["sh", "-c", "pip install prometheus-client >/tmp/install.log 2>&1 && python exporter.py --rpc http://validator:26657"]
+    ports:
+      - "${PROMETHEUS_PORT:-26660}:9300"
+    networks:
+      - private
+
+networks:
+  private:
+    internal: true
+  public:
+    driver: bridge
+
+volumes:
+  validator-data:
+  sentry-data:

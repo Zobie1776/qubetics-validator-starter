@@ -1,0 +1,20 @@
+name: Security Scan
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  trivy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Trivy
+        uses: aquasecurity/setup-trivy@v0.11.0
+      - name: Scan filesystem
+        run: trivy fs --exit-code 1 --severity HIGH,CRITICAL .
+      - name: Scan Docker image
+        run: |
+          docker build -t qubetics-validator -f docker/Dockerfile .
+          trivy image --exit-code 1 --severity HIGH,CRITICAL qubetics-validator

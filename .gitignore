@@ -1,4 +1,38 @@
-.env
-.reports/
+# Binaries and build artifacts
+build/
+*.o
+*.out
+
+# Python
 __pycache__/
+*.py[cod]
+
+# Node
+node_modules/
+dist/
+
+# Logs and reports
+.reports/
+.logs/
 *.log
+
+# Editor
+.vscode/
+.idea/
+.DS_Store
+
+# Env files
+.env
+.env.*
+
+# Terraform/Ansible
+.terraform/
+*.tfstate*
+*.retry
+
+# Coverage
+coverage/
+.pytest_cache/
+
+# Docker
+*.tar

@@ -1,0 +1,6 @@
+# Owners for critical assets
+* @Qubetics/validator-core-team
+
+docs/security.md @Qubetics/security
+scripts/harden.sh @Qubetics/security
+.github/workflows/* @Qubetics/devops

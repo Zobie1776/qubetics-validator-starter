@@ -1,0 +1,37 @@
+---
+- name: Provision Qubetics validator
+  hosts: validators
+  become: true
+  vars:
+    repo_url: https://github.com/Qubetics/qubetics-validator-starter.git
+    repo_dir: /opt/qubetics-validator
+  tasks:
+    - name: Ensure dependencies are installed
+      apt:
+        name:
+          - git
+          - docker.io
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+
+    - name: Clone validator starter repo
+      git:
+        repo: "{{ repo_url }}"
+        dest: "{{ repo_dir }}"
+        version: main
+        force: yes
+
+    - name: Install compose stack
+      community.docker.docker_compose_v2:
+        project_src: "{{ repo_dir }}/docker"
+        files:
+          - docker-compose.ha.yml
+        state: present
+
+    - name: Start validator stack
+      community.docker.docker_compose_v2:
+        project_src: "{{ repo_dir }}/docker"
+        files:
+          - docker-compose.ha.yml
+        state: started

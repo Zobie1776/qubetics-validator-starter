@@ -5,102 +5,101 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./utils.sh
 source "$SCRIPT_DIR/utils.sh"
 
-require_root() {
-  if [[ $EUID -ne 0 ]]; then
-    die "Snapshot restore must be run as root"
-  fi
+usage() {
+  cat <<USAGE
+Usage: $(basename "$0") [options]
+
+Options:
+  --output <dir>         Directory to write snapshot files (default $SNAPSHOT_DIR)
+  --home <path>          Qubetics home directory
+  --retain <count>       Number of historical snapshots to retain
+  --network <profile>    Network profile context
+  --env-file <path>      Load environment variables from a file
+  --help                 Show this help message
+USAGE
 }
 
-require_root
-
+SNAPSHOT_DIR="${SNAPSHOT_DIR:-${HOME}/.snapshots/qubetics}"
 HOME_DIR="${HOME_DIR:-/data/.qubeticsd}"
+RETAIN_COUNT="${SNAPSHOT_RETAIN:-5}"
 SERVICE_NAME="qubeticschain.service"
-SNAP_URL="${SNAP_URL:-}"
-if [[ -z "$SNAP_URL" ]]; then
-  die "SNAP_URL is required"
+
+if ! parse_common_args "$@"; then
+  usage
+  exit 0
 fi
 
-if ! command -v lz4 >/dev/null 2>&1; then
-  die "lz4 command is required"
-fi
+set -- "${COMMON_ARGS[@]}"
 
-mkdir -p "$REPORTS_DIR"
-
-TIMESTAMP="$(date -u +'%Y%m%d%H%M%S')"
-BACKUP_ROOT="${BACKUP_ROOT:-${HOME}/.backups/qubetics}"
-mkdir -p "$BACKUP_ROOT"
-BACKUP_FILE="$BACKUP_ROOT/snapshot-${TIMESTAMP}.tar.gz"
-
-say "Stopping $SERVICE_NAME"
-systemctl stop "$SERVICE_NAME" || true
-
-say "Backing up config and keys"
-BACKUP_ITEMS=()
-if [[ -d "$HOME_DIR/config" ]]; then
-  BACKUP_ITEMS+=("$HOME_DIR/config")
-fi
-if [[ -f "$HOME_DIR/data/priv_validator_state.json" ]]; then
-  BACKUP_ITEMS+=("$HOME_DIR/data/priv_validator_state.json")
-fi
-if [[ ${#BACKUP_ITEMS[@]} -gt 0 ]]; then
-  tar -czf "$BACKUP_FILE" "${BACKUP_ITEMS[@]}"
-else
-  say "Warning: nothing to backup"
-fi
-
-TEMP_DIR="$(mktemp -d)"
-trap 'rm -rf "$TEMP_DIR"' EXIT
-SNAP_FILE="$TEMP_DIR/snapshot.lz4"
-
-say "Downloading snapshot from $SNAP_URL"
-if ! curl -fsSL "$SNAP_URL" -o "$SNAP_FILE"; then
-  die "Failed to download snapshot from $SNAP_URL"
-fi
-
-say "Clearing old data"
-rm -rf "$HOME_DIR/data" "$HOME_DIR/wasm" "$HOME_DIR/snapshots"
-mkdir -p "$HOME_DIR"
-
-say "Extracting snapshot"
-lz4 -d "$SNAP_FILE" -c | tar -x -C "$HOME_DIR"
-
-say "Starting $SERVICE_NAME"
-systemctl start "$SERVICE_NAME" || true
-sleep 5
-
-LOG_OUTPUT="$(journalctl -u "$SERVICE_NAME" -n 50 --no-pager 2>/dev/null || true)"
-
-CATCHING="true"
-HEIGHT="unknown"
-for attempt in $(seq 1 60); do
-  sleep 10
-  STATUS_JSON="$(curl -fsS http://127.0.0.1:26657/status 2>/dev/null || echo '{}')"
-  CATCHING="$(printf '%s' "$STATUS_JSON" | json '.result.sync_info.catching_up' 2>/dev/null || echo 'true')"
-  HEIGHT="$(printf '%s' "$STATUS_JSON" | json '.result.sync_info.latest_block_height' 2>/dev/null || echo 'unknown')"
-  say "Status check #$attempt catching_up=$CATCHING height=$HEIGHT"
-  if [[ "$CATCHING" == "false" ]]; then
-    break
-  fi
-  if [[ $attempt -eq 60 ]]; then
-    say "Warning: node still catching up after snapshot restore"
-  fi
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output)
+      SNAPSHOT_DIR="$2"; shift 2 ;;
+    --home)
+      HOME_DIR="$2"; shift 2 ;;
+    --retain)
+      RETAIN_COUNT="$2"; shift 2 ;;
+    --help)
+      usage; exit 0 ;;
+    --*)
+      die "Unknown flag $1" ;;
+    *)
+      break ;;
+  esac
 done
 
-REPORT_FILE="${REPORTS_DIR}/snapshot.md"
+require_cmd tar
+require_cmd lz4
+
+mkdir -p "$SNAPSHOT_DIR"
+
+if [[ $EUID -ne 0 ]]; then
+  die "snapshot.sh must be run as root"
+fi
+
+TIMESTAMP="$(date -u +'%Y%m%d%H%M%S')"
+ARCHIVE_NAME="qubetics-${CHAIN_ID}-${TIMESTAMP}.tar"
+ARCHIVE_PATH="${SNAPSHOT_DIR%/}/${ARCHIVE_NAME}"
+
+say "Stopping $SERVICE_NAME to ensure consistent snapshot"
+systemctl stop "$SERVICE_NAME" || true
+sleep 2
+
+say "Creating snapshot archive at $ARCHIVE_PATH"
+if ! tar -cf "$ARCHIVE_PATH" -C "$HOME_DIR" data config/priv_validator_state.json config/priv_validator_key.json config/node_key.json >/dev/null 2>&1; then
+  say "Warning: tar reported issues. Ensure paths exist."
+fi
+
+say "Restarting $SERVICE_NAME"
+systemctl start "$SERVICE_NAME" || true
+
+COMPRESSED_PATH="${ARCHIVE_PATH}.lz4"
+say "Compressing snapshot to $COMPRESSED_PATH"
+if ! lz4 -9 "$ARCHIVE_PATH" "$COMPRESSED_PATH" >/dev/null 2>&1; then
+  die "Failed to compress snapshot"
+fi
+rm -f "$ARCHIVE_PATH"
+
+if [[ "$RETAIN_COUNT" =~ ^[0-9]+$ && "$RETAIN_COUNT" -gt 0 ]]; then
+  say "Pruning snapshots older than $RETAIN_COUNT copies"
+  mapfile -t snapshots < <(ls -1t "$SNAPSHOT_DIR"/*.lz4 2>/dev/null || true)
+  if (( ${#snapshots[@]} > RETAIN_COUNT )); then
+    for old in "${snapshots[@]:RETAIN_COUNT}"; do
+      say "Removing old snapshot $old"
+      rm -f "$old"
+    done
+  fi
+fi
+
+REPORT_FILE="${REPORTS_DIR}/snapshot-create.md"
 cat <<REPORT > "$REPORT_FILE"
-# Snapshot Restore
+# Snapshot Created
 
 - Timestamp: $(date -u +'%Y-%m-%dT%H:%M:%SZ')
-- Snapshot URL: $SNAP_URL
-- Backup: $BACKUP_FILE
-- catching_up: $CATCHING
-- Height: $HEIGHT
-
-## Recent Logs
-
-```
-$LOG_OUTPUT
-```
+- Chain: $CHAIN_ID
+- Snapshot: $COMPRESSED_PATH
+- Retention: $RETAIN_COUNT
 REPORT
 
-say "Snapshot restore complete. Report written to $REPORT_FILE"
+say "Snapshot created: $COMPRESSED_PATH"
+say "Report written to $REPORT_FILE"
